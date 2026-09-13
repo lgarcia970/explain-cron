@@ -1,0 +1,8 @@
+[package]
+name = "explain-cron"
+version = "0.1.0"
+edition = "2021"
+description = "Validate and describe cron expressions from the command line"
+license = "MIT"
+
+[dependencies]
