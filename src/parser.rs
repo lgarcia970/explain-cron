@@ -13,6 +13,7 @@ pub enum CronError {
     OutOfRange { field: &'static str, value: u32, min: u32, max: u32 },
     BackwardsRange { field: &'static str, start: u32, end: u32 },
     ZeroStep { field: &'static str },
+    UnknownShorthand { text: String },
 }
 
 impl fmt::Display for CronError {
@@ -33,6 +34,10 @@ impl fmt::Display for CronError {
                 write!(f, "{field}: range {start}-{end} goes backwards")
             }
             CronError::ZeroStep { field } => write!(f, "{field}: step of 0 is not allowed"),
+            CronError::UnknownShorthand { text } => write!(
+                f,
+                "'{text}' is not a recognized shorthand (expected one of @yearly, @annually, @monthly, @weekly, @daily, @midnight, @hourly)"
+            ),
         }
     }
 }
@@ -96,10 +101,19 @@ fn parse_number(text: &str, min: u32, max: u32, field: &'static str) -> Result<u
     Ok(value)
 }
 
-/// Parses a full five-field cron expression. Day-of-week accepts both 0
-/// and 7 for Sunday; 7 is folded down to 0 so callers only ever see 0-6.
+/// Parses a full five-field cron expression, or one of the `@daily` /
+/// `@hourly` style shorthands in place of the five fields. Day-of-week
+/// accepts both 0 and 7 for Sunday; 7 is folded down to 0 so callers only
+/// ever see 0-6.
 pub fn parse_cron_expression(expr: &str) -> Result<CronSchedule, CronError> {
     let fields: Vec<&str> = expr.split_whitespace().collect();
+
+    if fields.len() == 1 {
+        if let Some(name) = fields[0].strip_prefix('@') {
+            return parse_shorthand(name);
+        }
+    }
+
     if fields.len() != 5 {
         return Err(CronError::WrongFieldCount { found: fields.len() });
     }
@@ -119,6 +133,21 @@ pub fn parse_cron_expression(expr: &str) -> Result<CronSchedule, CronError> {
     day_of_week.dedup();
 
     Ok(CronSchedule { minute, hour, day_of_month, month, day_of_week })
+}
+
+/// Expands a shorthand name (the part after `@`) to the equivalent
+/// five-field expression. Matching is case-insensitive since the leading
+/// `@` already makes these unambiguous with normal field syntax.
+fn parse_shorthand(name: &str) -> Result<CronSchedule, CronError> {
+    let expanded = match name.to_ascii_lowercase().as_str() {
+        "yearly" | "annually" => "0 0 1 1 *",
+        "monthly" => "0 0 1 * *",
+        "weekly" => "0 0 * * 0",
+        "daily" | "midnight" => "0 0 * * *",
+        "hourly" => "0 * * * *",
+        _ => return Err(CronError::UnknownShorthand { text: format!("@{name}") }),
+    };
+    parse_cron_expression(expanded)
 }
 
 #[cfg(test)]
@@ -183,6 +212,46 @@ mod tests {
     fn sunday_seven_folds_to_zero() {
         let schedule = parse_cron_expression("0 0 * * 7").unwrap();
         assert_eq!(schedule.day_of_week, vec![0]);
+    }
+
+    #[test]
+    fn shorthand_expands_to_equivalent_fields() {
+        assert_eq!(
+            parse_cron_expression("@daily").unwrap(),
+            parse_cron_expression("0 0 * * *").unwrap()
+        );
+        assert_eq!(
+            parse_cron_expression("@hourly").unwrap(),
+            parse_cron_expression("0 * * * *").unwrap()
+        );
+        assert_eq!(
+            parse_cron_expression("@weekly").unwrap(),
+            parse_cron_expression("0 0 * * 0").unwrap()
+        );
+        assert_eq!(
+            parse_cron_expression("@monthly").unwrap(),
+            parse_cron_expression("0 0 1 * *").unwrap()
+        );
+        assert_eq!(
+            parse_cron_expression("@yearly").unwrap(),
+            parse_cron_expression("@annually").unwrap()
+        );
+    }
+
+    #[test]
+    fn shorthand_is_case_insensitive() {
+        assert_eq!(
+            parse_cron_expression("@DAILY").unwrap(),
+            parse_cron_expression("@daily").unwrap()
+        );
+    }
+
+    #[test]
+    fn unknown_shorthand_is_rejected() {
+        assert_eq!(
+            parse_cron_expression("@fortnightly"),
+            Err(CronError::UnknownShorthand { text: "@fortnightly".to_string() })
+        );
     }
 
     #[test]

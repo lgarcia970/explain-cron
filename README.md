@@ -26,6 +26,13 @@ day of week: every value
 
 $ explain-cron "70 * * * *"
 error: minute: 70 is out of range (0-59)
+
+$ explain-cron "@weekly"
+minute: 0
+hour: 0
+day of month: every value
+month: every value
+day of week: 0
 ```
 
 The expression can be passed as one quoted string or as five separate
@@ -38,14 +45,15 @@ arguments; both are joined with spaces before parsing.
 - `1-5` - an inclusive range
 - `1,5,10` - a list
 - `*/15` or `1-30/5` - a step applied to a wildcard or a range
+- `@yearly`, `@annually`, `@monthly`, `@weekly`, `@daily`, `@midnight`,
+  `@hourly` - shorthands in place of the five fields
 
 Day-of-week accepts both `0` and `7` for Sunday. Field ranges follow
 standard cron: minute 0-59, hour 0-23, day of month 1-31, month 1-12,
 day of week 0-7.
 
-Not yet supported: named months/days (`JAN`, `MON`), the `@daily` /
-`@hourly` style shorthands, and the `?` placeholder some implementations
-use for day fields.
+Not yet supported: named months/days (`JAN`, `MON`) and the `?`
+placeholder some implementations use for day fields.
 
 ## Design
 
