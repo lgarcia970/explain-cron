@@ -92,6 +92,10 @@ fn parse_part(part: &str, min: u32, max: u32, field: &'static str) -> Result<Vec
 }
 
 fn parse_number(text: &str, min: u32, max: u32, field: &'static str) -> Result<u32, CronError> {
+    if let Some(value) = resolve_name(text, field) {
+        return Ok(value);
+    }
+
     let value: u32 = text
         .parse()
         .map_err(|_| CronError::NotANumber { field, text: text.to_string() })?;
@@ -101,10 +105,46 @@ fn parse_number(text: &str, min: u32, max: u32, field: &'static str) -> Result<u
     Ok(value)
 }
 
+/// Resolves a three-letter month or weekday name to its numeric value.
+/// Only applies to the `month` and `day-of-week` fields; every other
+/// field falls straight through to the numeric parser.
+fn resolve_name(text: &str, field: &'static str) -> Option<u32> {
+    match field {
+        "month" => match text.to_ascii_uppercase().as_str() {
+            "JAN" => Some(1),
+            "FEB" => Some(2),
+            "MAR" => Some(3),
+            "APR" => Some(4),
+            "MAY" => Some(5),
+            "JUN" => Some(6),
+            "JUL" => Some(7),
+            "AUG" => Some(8),
+            "SEP" => Some(9),
+            "OCT" => Some(10),
+            "NOV" => Some(11),
+            "DEC" => Some(12),
+            _ => None,
+        },
+        "day-of-week" => match text.to_ascii_uppercase().as_str() {
+            "SUN" => Some(0),
+            "MON" => Some(1),
+            "TUE" => Some(2),
+            "WED" => Some(3),
+            "THU" => Some(4),
+            "FRI" => Some(5),
+            "SAT" => Some(6),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Parses a full five-field cron expression, or one of the `@daily` /
 /// `@hourly` style shorthands in place of the five fields. Day-of-week
 /// accepts both 0 and 7 for Sunday; 7 is folded down to 0 so callers only
-/// ever see 0-6.
+/// ever see 0-6. The month and day-of-week fields also accept the
+/// three-letter names (`JAN`, `MON`, ...), case-insensitively, anywhere a
+/// number would go, including inside ranges and steps.
 pub fn parse_cron_expression(expr: &str) -> Result<CronSchedule, CronError> {
     let fields: Vec<&str> = expr.split_whitespace().collect();
 
@@ -251,6 +291,55 @@ mod tests {
         assert_eq!(
             parse_cron_expression("@fortnightly"),
             Err(CronError::UnknownShorthand { text: "@fortnightly".to_string() })
+        );
+    }
+
+    #[test]
+    fn month_names_parse_as_numbers() {
+        assert_eq!(parse_field("JAN", 1, 12, "month").unwrap(), vec![1]);
+        assert_eq!(parse_field("dec", 1, 12, "month").unwrap(), vec![12]);
+        assert_eq!(parse_field("jan,mar,dec", 1, 12, "month").unwrap(), vec![1, 3, 12]);
+    }
+
+    #[test]
+    fn weekday_names_parse_as_numbers() {
+        assert_eq!(parse_field("SUN", 0, 7, "day-of-week").unwrap(), vec![0]);
+        assert_eq!(parse_field("fri", 0, 7, "day-of-week").unwrap(), vec![5]);
+    }
+
+    #[test]
+    fn named_ranges_and_steps_work_like_numeric_ones() {
+        assert_eq!(
+            parse_field("MON-FRI", 0, 7, "day-of-week").unwrap(),
+            vec![1, 2, 3, 4, 5]
+        );
+        assert_eq!(
+            parse_field("JAN-DEC/3", 1, 12, "month").unwrap(),
+            vec![1, 4, 7, 10]
+        );
+    }
+
+    #[test]
+    fn names_are_only_recognized_in_their_own_field() {
+        assert_eq!(
+            parse_field("MON", 0, 59, "minute"),
+            Err(CronError::NotANumber { field: "minute", text: "MON".to_string() })
+        );
+    }
+
+    #[test]
+    fn unknown_name_is_rejected() {
+        assert_eq!(
+            parse_field("FOO", 1, 12, "month"),
+            Err(CronError::NotANumber { field: "month", text: "FOO".to_string() })
+        );
+    }
+
+    #[test]
+    fn full_expression_accepts_names_in_place_of_numbers() {
+        assert_eq!(
+            parse_cron_expression("0 9 * JAN-MAR MON-FRI").unwrap(),
+            parse_cron_expression("0 9 * 1-3 1-5").unwrap()
         );
     }
 

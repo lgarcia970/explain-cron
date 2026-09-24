@@ -52,8 +52,12 @@ Day-of-week accepts both `0` and `7` for Sunday. Field ranges follow
 standard cron: minute 0-59, hour 0-23, day of month 1-31, month 1-12,
 day of week 0-7.
 
-Not yet supported: named months/days (`JAN`, `MON`) and the `?`
-placeholder some implementations use for day fields.
+The month and day-of-week fields also accept three-letter names, case
+insensitive, anywhere a number is allowed - including inside ranges and
+steps: `JAN-MAR`, `MON,WED,FRI`, `MON-FRI/2`.
+
+Not yet supported: the `?` placeholder some implementations use for day
+fields.
 
 ## Design
 
