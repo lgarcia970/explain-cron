@@ -33,10 +33,29 @@ hour: 0
 day of month: every value
 month: every value
 day of week: 0
+
+$ explain-cron --next 3 --from "2024-01-01 00:00" "30 9 * * *"
+minute: 30
+hour: 9
+day of month: every value
+month: every value
+day of week: every value
+
+next 3 run(s) after Mon 2024-01-01 00:00:
+Mon 2024-01-01 09:30
+Tue 2024-01-02 09:30
+Wed 2024-01-03 09:30
 ```
 
 The expression can be passed as one quoted string or as five separate
 arguments; both are joined with spaces before parsing.
+
+Add `--next N` to also print the next `N` times the schedule fires,
+starting the search just after `--from "YYYY-MM-DD HH:MM"` (UTC). If
+`--from` is omitted, the search starts from the current system time.
+The search gives up after about four years if the schedule can never
+match (day-of-month 31 in February, for instance), in which case fewer
+than `N` times are printed.
 
 ## Supported syntax
 
@@ -62,12 +81,18 @@ fields.
 ## Design
 
 The parsing and matching logic lives in `src/parser.rs` and
-`src/schedule.rs` as plain functions with no I/O: given a string (or a
-`CronSchedule` plus some calendar fields), they return a value or an
-error, nothing else. `src/main.rs` is the only place that touches
-`std::env` or a terminal. That split is what makes the logic worth unit
-testing - the tests in each module call the parsing and matching
-functions directly, no process spawning or fixture files required.
+`src/schedule.rs`, calendar arithmetic (leap years, weekdays, minute
+rollover) lives in `src/datetime.rs`, and walking a schedule forward in
+time lives in `src/next.rs` - all as plain functions with no I/O: given
+a string (or a `CronSchedule` plus some calendar fields), they return a
+value or an error, nothing else. `src/main.rs` is the only place that
+touches `std::env`, the system clock, or a terminal. That split is what
+makes the logic worth unit testing - the tests in each module call the
+parsing and matching functions directly, no process spawning or
+fixture files required.
+
+`DateTime` is a plain UTC calendar timestamp; there's no timezone or
+DST handling because cron itself has neither.
 
 ## Building
 
